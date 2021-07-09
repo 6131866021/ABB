@@ -1,16 +1,23 @@
+from numpy import random
+from numpy.core.defchararray import array
 import requests
 from requests import auth
 from requests.auth import HTTPDigestAuth
 import xml.etree.ElementTree as ET
 import urllib.parse
+import numpy as np
+
+import time
+# import tensorflow as tf
 
 # Fix Status Code 401 Unauthorized
 
 class Login:
-    def __init__(self, host, username, password):
+    def __init__(self, host, username, password, namespace):
         self.host = host
         self.username = username
         self.password = password
+        self.namespace = namespace
         self.digest_auth = HTTPDigestAuth(self.username, self.password)
         self.session = requests.Session()
 
@@ -42,33 +49,35 @@ class Login:
             return False
 
 class SymbolData:
-    def __init__(self, host, username, password, robtarget, count):
+    def __init__(self, host, username, password, namespace, robtargetA, robtargetB, robtargetC, count):
         self.host = host
         self.username = username
         self.password = password
+        self.namespace = namespace
+        self.robtargetA = robtargetA
+        self.robtargetB = robtargetB
+        self.robtargetC = robtargetC
         self.digest_auth = HTTPDigestAuth(self.username, self.password)
-        self.robtarget = robtarget
         self.session = requests.Session()
         self.count = count # Sample
 
     def getSymbolData(self):
-        url = self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/" + str(self.robtarget)
+        host = self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/"
+        robtarget = [self.robtargetA, self.robtargetB, self.robtargetC]
+        url = [host + str(rb) for rb in robtarget]
         payload={}
         headers = {
-        'Content-Type': 'application/x-www-form-hostencoded',
-        'Cookie': '-http-session-=19::http.session::18ebde34f1bad88d578877dd44074e82; ABBCX=32'
+            'Content-Type': 'application/x-www-form-hostencoded',
         }
-        response = self.session.request("GET", url, headers=headers, data=payload, auth=self.digest_auth)
-        if response.status_code == 200:
-            self.initvalue = [[6,6,6],[0,0,1,0],[0,0,-2,0],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]] # Sample
-            self.changevalue = [[6,6,6],[0,0,1,0],[0,0,-2,0],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]] # Sample
-            print(response.text)
-            return True
-            # print this <li class="rap-data" title="RAPID/T_ROB1/user/reg1"> <span class="value">0</span>
-        else:
-            print("Error get symbol data --> robtarget '" + self.robtarget + "'")
-            return False
-    
+        response = [self.session.request("GET", url[0], headers=headers, data=payload, auth=self.digest_auth),
+                    self.session.request("GET", url[1], headers=headers, data=payload, auth=self.digest_auth),
+                    self.session.request("GET", url[2], headers=headers, data=payload, auth=self.digest_auth)]
+        self.valueA = extract_value(print_event(response[0].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[0].status_code == 200 else False
+        self.valueB = extract_value(print_event(response[1].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[1].status_code == 200 else False
+        self.valueC = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
+        self.changevalue = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
+        return response[0].status_code == 200 and response[1].status_code == 200 and response[2].status_code == 200
+
     def urlencode(self):
         encodevalue = "[["  
         for x in range(3):
@@ -83,9 +92,13 @@ class SymbolData:
         print(self.encodevalue)
 
     def changeData(self):
-        self.changevalue[0][0] = self.changevalue[0][0] + 1
-        self.changevalue[0][1] = self.changevalue[0][1] + 1
-        self.changevalue[0][2] = self.changevalue[0][0] + 2
+        # self.changevalue[0][0] = self.changevalue[0][0] + 1
+        # self.changevalue[0][1] = self.changevalue[0][1] + 1
+        # self.changevalue[0][2] = self.changevalue[0][0] + 2
+        # self.changevalue = np.random.randn
+        self.changevalue[0][0] = random.uniform(self.valueA[0][0], self.valueB[0][0])
+        self.changevalue[0][1] = random.uniform(self.valueA[0][1], self.valueB[0][1])
+        self.changevalue[0][2] = random.uniform(self.valueA[0][2], self.valueB[0][2])
         self.count = self.count + 1
 
     def validateSymbolData(self):
@@ -120,10 +133,11 @@ class SymbolData:
             return False
 
 class Execution:
-    def __init__(self, host, username, password, once):
+    def __init__(self, host, username, password, namespace, once):
         self.host = host
         self.username = username
         self.password = password
+        self.namespace = namespace
         self.digest_auth = HTTPDigestAuth(self.username, self.password)
         self.once = once
         self.session = requests.Session()
@@ -182,24 +196,66 @@ class Execution:
             print("Fail to stop execution")
             return False
 
+def print_event(evt, namespace, liclass="", spanclass=""):
+    """Extract the API response in the XML format
+    with requirement of liclass or spanclass name"""
+
+    root = ET.fromstring(evt)
+    data = []
+    span = spanclass
+    spanclass = "[@class='" + spanclass + "']" if len(spanclass) > 0 else ''
+    findRoot = ".//{0}li[@class='" + liclass + "']/{0}span" + spanclass
+    for i in range(len(root.findall(findRoot.format(namespace)))):
+        data.append(root.findall(findRoot.format(namespace))[i].text)
+        print(liclass + " " + span + ": " + root.findall(findRoot.format(namespace))[i].text)
+    return data
+
+def extract_value(evt):
+    """Get the robtarget value for a function() 
+    getSymbolData in class SymbolData"""
+
+    arr = []
+    for data in evt:
+        removeBracket = [data.find('['), data.find(']')]
+        if removeBracket[0] == 0:
+            arr.append(float(data[1:]))
+        elif removeBracket[1] > 0:
+            arr.append(float(data[:-1]))
+        else:
+            arr.append(float(data))
+
+    return np.array([[arr[0], arr[1], arr[2]], 
+                    [arr[3], arr[4], arr[5], arr[6]], 
+                    [arr[7], arr[8], arr[9], arr[10]], 
+                    [arr[11], arr[12], arr[13], arr[14], arr[15], arr[16]]], dtype=object)
+
 def main():
+    """Main function to execute the class and methods"""
+
     host = "http://192.168.1.113:80/"
     username = 'Default User'
     password = 'robotics'
+    namespace = '{http://www.w3.org/1999/xhtml}'
 
-    symbolData = SymbolData(host, username, password, 'Target_50', 0)
-    # if symbolData.getSymbolData():
-    #     symbolData.urlencode()
+    # login = Login(host, username, password)
+    # if login.localLogin():
+    #     login.requestMastership()
+
+    symbolData = SymbolData(host, username, password, namespace, 'Target_10', 'Target_30', 'Target_50', 0)
+    if symbolData.getSymbolData():
+        symbolData.urlencode()
+        symbolData.changeData()
+        # print(symbolData.changevalue)
     #     if symbolData.validateSymbolData():
     #         symbolData.updateSymbolData()
     # else:
     #     print("Wrong Entry")
 
-    exe = Execution(host, username, password, once=False)
-    exe.startExecution()
+    # exe = Execution(host, username, password, once=False)
+    # exe.startExecution()
 
-    clk = SymbolData(host, username, password, 'time', 0)
-    clk.getSymbolData()
+    # clk = SymbolData(host, username, password, 'time', 0)
+    # clk.getSymbolData()
 
 if __name__ == "__main__":
      main()
