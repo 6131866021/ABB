@@ -1,4 +1,15 @@
-from numpy import random
+"""
+environment = robot studio
+agent = robotics
+simulate steps = changeData, executeRapid
+reward = ???
+reset = put back the inital robtargetC value
+
+Requirement:
+tensorflow > 2.0.0
+numpy > ...
+"""
+
 from numpy.core.defchararray import array
 import requests
 from requests import auth
@@ -6,11 +17,19 @@ from requests.auth import HTTPDigestAuth
 import xml.etree.ElementTree as ET
 import urllib.parse
 import numpy as np
-
 import time
-# import tensorflow as tf
 
-# Fix Status Code 401 Unauthorized
+class RobotEnv(object):
+    def __init__(self):
+        self.info = np.zeros((2, 4))
+
+    def step(self, action):
+        """Perform training"""
+        self.action = action
+    
+    def reset(self):
+        """Reset values after changing the robtarget data"""
+        self.point = 0        
 
 class Login:
     def __init__(self, host, username, password, namespace):
@@ -49,7 +68,7 @@ class Login:
             return False
 
 class SymbolData:
-    def __init__(self, host, username, password, namespace, robtargetA, robtargetB, robtargetC, count):
+    def __init__(self, host, username, password, namespace, robtargetA, robtargetB, robtargetC, clk, episodes):
         self.host = host
         self.username = username
         self.password = password
@@ -57,26 +76,37 @@ class SymbolData:
         self.robtargetA = robtargetA
         self.robtargetB = robtargetB
         self.robtargetC = robtargetC
+        self.clk = clk
         self.digest_auth = HTTPDigestAuth(self.username, self.password)
         self.session = requests.Session()
-        self.count = count # Sample
+        self.episodes = episodes # Sample amount
 
-    def getSymbolData(self):
-        host = self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/"
-        robtarget = [self.robtargetA, self.robtargetB, self.robtargetC]
-        url = [host + str(rb) for rb in robtarget]
-        payload={}
-        headers = {
-            'Content-Type': 'application/x-www-form-hostencoded',
-        }
-        response = [self.session.request("GET", url[0], headers=headers, data=payload, auth=self.digest_auth),
-                    self.session.request("GET", url[1], headers=headers, data=payload, auth=self.digest_auth),
-                    self.session.request("GET", url[2], headers=headers, data=payload, auth=self.digest_auth)]
-        self.valueA = extract_value(print_event(response[0].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[0].status_code == 200 else False
-        self.valueB = extract_value(print_event(response[1].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[1].status_code == 200 else False
-        self.valueC = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
-        self.changevalue = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
-        return response[0].status_code == 200 and response[1].status_code == 200 and response[2].status_code == 200
+    def getSymbolData(self, datatype="robtarget"):
+        if datatype == "clock":
+            url = self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/" + self.clk
+            payload ={}
+            headers = {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+            response = self.session.request("GET", url, headers=headers, data=payload, auth=self.digest_auth)
+            print_event(response.text, self.namespace, liclass="rap-data", spanclass="value")
+            return response.status_code == 200
+        else:
+            host = self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/"
+            robtarget = [self.robtargetA, self.robtargetB, self.robtargetC]
+            url = [host + str(rb) for rb in robtarget]
+            payload={}
+            headers = {
+                'Content-Type': 'application/x-www-form-hostencoded',
+            }
+            response = [self.session.request("GET", url[0], headers=headers, data=payload, auth=self.digest_auth),
+                        self.session.request("GET", url[1], headers=headers, data=payload, auth=self.digest_auth),
+                        self.session.request("GET", url[2], headers=headers, data=payload, auth=self.digest_auth)]
+            self.valueA = extract_value(print_event(response[0].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[0].status_code == 200 else False
+            self.valueB = extract_value(print_event(response[1].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[1].status_code == 200 else False
+            self.valueC = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
+            self.changevalue = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
+            return response[0].status_code == 200 and response[1].status_code == 200 and response[2].status_code == 200
 
     def urlencode(self):
         encodevalue = "[["  
@@ -89,17 +119,24 @@ class SymbolData:
                     encodevalue = encodevalue + str(self.changevalue[x][y]) + ','
         encodevalue = encodevalue + "9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]]"
         self.encodevalue = urllib.parse.quote_plus(encodevalue)
-        print(self.encodevalue)
 
     def changeData(self):
-        # self.changevalue[0][0] = self.changevalue[0][0] + 1
-        # self.changevalue[0][1] = self.changevalue[0][1] + 1
-        # self.changevalue[0][2] = self.changevalue[0][0] + 2
-        # self.changevalue = np.random.randn
-        self.changevalue[0][0] = random.uniform(self.valueA[0][0], self.valueB[0][0])
-        self.changevalue[0][1] = random.uniform(self.valueA[0][1], self.valueB[0][1])
-        self.changevalue[0][2] = random.uniform(self.valueA[0][2], self.valueB[0][2])
-        self.count = self.count + 1
+        invalid, randomPoint = True, []
+        mean, std = [(self.valueA[0][i]+self.valueB[0][i])/2 for i in range(3)], [abs(self.valueA[0][i]-self.valueB[0][i])/4 for i in range(3)]
+        while invalid:
+            randomPoint = [np.random.normal(loc=mean[i], scale=std[i]) for i in range(3)]
+            x1, x2 = self.valueA[0][0], self.valueB[0][0]
+            y1, y2 = self.valueA[0][1], self.valueB[0][1]
+            z1, z2 = self.valueA[0][2], self.valueB[0][2]
+            x_valid = (x1 < randomPoint[0] < x2) or (x2 < randomPoint[0] <x1)
+            y_valid = (y1 < randomPoint[1] < y2) or (y2 < randomPoint[1] <y1)
+            z_valid = (z1 < randomPoint[2] < z2) or (z2 < randomPoint[2] <z2)
+            invalid = not(x_valid and y_valid and z_valid)
+
+        # When random values are valid, assign to changevalue
+        for i in range(3):
+            self.changevalue[0][i] = randomPoint[i]
+        self.episodes = self.episodes + 1
 
     def validateSymbolData(self):
         url = self.host + "rw/rapid/symbol/data?action=validate"
@@ -108,30 +145,53 @@ class SymbolData:
             'Content-Type': 'application/x-www-form-urlencoded'
         }
         response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
-        print(response.status_code)
-        if response.status_code == 204:
-            print("Validate symbol data")
-            return True
-        else:
+        if response.status_code != 204:
             print("Error validate symbol data --> Check the changed position '" + str(self.changevalue) + "'") 
-            return False
+        return response.status_code == 204
 
     def updateSymbolData(self):
-        url = self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/" + self.robtarget + "?action=setInitValue"
+        url = self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/" + self.robtargetC + "?action=setInitValue"
         payload = 'value=' + self.encodevalue
-        print(self.robtarget, payload, self.digest_auth)
         headers = {
             'Content-Type': 'application/x-www-form-urlencoded'
         }
         response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
-        print(response.status_code)
         if response.status_code == 204:
-            print("Update symbol data for robtarget '" + self.robtarget + "'")
+            print("Update symbol data for robtarget '" + self.robtargetC + "'")
             return True
         else:
             print("Error update symbol data") 
             return False
 
+class Signal:
+    def __init__(self, host, username, password, namespace, signal):
+        self.host = host
+        self.username = username
+        self.password = password
+        self.namespace = namespace
+        self.digest_auth = HTTPDigestAuth(self.username, self.password)
+        self.signal = signal
+        self.session = requests.Session()
+    
+    def getSignal(self):
+        url = self.host + "rw/iosystem/signals/" + self.signal
+        payload={}
+        headers = {
+        'Cookie': '-http-session-=27::http.session::cd42c3a9ac8c8b0e0a2202a1cfc94a23; ABBCX=40'
+        }
+        response = self.session.request("GET", url, headers=headers, data=payload, auth=self.digest_auth)
+        self.signalvalue = print_event(response.text, self.namespace, liclass="ios-signal", spanclass="lvalue")
+        return response.status_code == 200
+    
+    def updateSignal(self):
+        url = self.host + "rw/iosystem/signals/" + self.signal + "?action=set"
+        payload = 'lvalue=1' if self.signalvalue == 0 else 'lvalue=0'
+        headers = {
+        'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
+        return response.status_code == 204
+   
 class Execution:
     def __init__(self, host, username, password, namespace, once):
         self.host = host
@@ -147,10 +207,6 @@ class Execution:
         payload={}
         response = self.session.request("GET", url, data=payload, auth=self.digest_auth)
         return print(response.text)
-        # <li class="rap-execution" title="execution">
-        #   <span class="ctrlexecstate">stopped</span>
-        #   <span class="cycle">forever</span>
-        # </li>
 
     def setExecutionCycle(self):
         url = self.host + "rw/rapid/execution?action=setcycle"
@@ -170,7 +226,7 @@ class Execution:
             
     def startExecution(self):
         url = self.host + "rw/rapid/execution?action=startprodentry"
-        payload='regain=continue&execmode=continue&cycle=forever&condition=none&stopatbp=disabled&alltaskbytsp=false'
+        payload='regain=continue&execmode=continue&cycle=once&condition=none&stopatbp=disabled&alltaskbytsp=false'
         headers = {
             'Content-Type': 'application/x-www-form-hostencoded',
         }
@@ -186,9 +242,9 @@ class Execution:
         url = self.host + "rw/rapid/execution?action=stop"
         payload='regain=continue&execmode=continue&cycle=forever&condition=none&stopatbp=disabled&alltaskbytsp=false'
         headers = {
-            'Content-Type': 'application/x-www-form-hostencoded',
+            'Content-Type': 'application/x-www-form-urlencoded',
         }
-        response = self.session.request("POST", url, headers=headers, data=payload, auth=auth)
+        response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
         if response.status_code == 204:
             print("Stop Rapid Execution")
             return True
@@ -230,21 +286,30 @@ def extract_value(evt):
                     [arr[11], arr[12], arr[13], arr[14], arr[15], arr[16]]], dtype=object)
 
 def main():
-    """Main function to execute the class and methods"""
+    """Main function to execute class and methods
+    > Move to main.py
+    """
 
     host = "http://192.168.1.113:80/"
     username = 'Default User'
     password = 'robotics'
     namespace = '{http://www.w3.org/1999/xhtml}'
 
-    # login = Login(host, username, password)
-    # if login.localLogin():
-    #     login.requestMastership()
-
-    symbolData = SymbolData(host, username, password, namespace, 'Target_10', 'Target_30', 'Target_50', 0)
+    symbolData = SymbolData(host, username, password, namespace, 'Target_10', 'Target_20', 'Target_70', 'time', 0)
+    rapidExe = Execution(host, username, password, namespace, once=False)
     if symbolData.getSymbolData():
-        symbolData.urlencode()
-        symbolData.changeData()
+        while symbolData.episodes < 10:
+            symbolData.changeData()
+            symbolData.urlencode()
+            print(symbolData.encodevalue)
+            if symbolData.validateSymbolData():
+                symbolData.updateSymbolData()
+                if rapidExe.startExecution():
+                    time.sleep(10)
+                    symbolData.getSymbolData(datatype="clock")
+                    print(symbolData.changevalue)
+                    rapidExe.stopExecution()
+
         # print(symbolData.changevalue)
     #     if symbolData.validateSymbolData():
     #         symbolData.updateSymbolData()
