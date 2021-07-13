@@ -26,7 +26,8 @@ class hp(object):
     target_noise_clip = 0.5
     policy_delay = 2
     discount_factor = 0.98
-    batch_size = 512
+    batch_size = 256
+    state_size = 1000
     memory_size = 1000000
     random_action_prob = 0.1
     action_noise_std = 0.1

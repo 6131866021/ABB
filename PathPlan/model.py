@@ -1,14 +1,6 @@
 """
-environment = robot studio software
-agent = robotics
-state = current situation
-simulate steps = changeData, executeRapid
-reward = ???
-reset = put back the inital robtargetC value
-
-Requirement:
-tensorflow > 2.0.0
-numpy > ...
+This model has implemented from 
+'https://github.com/kimmyungsup/Reinforcement-Learning-with-Tensorflow-2.0/blob/master/DDPG_tf20/ddpg_tf20.py'
 """
 
 import requests
@@ -17,15 +9,14 @@ from requests.auth import HTTPDigestAuth
 import xml.etree.ElementTree as ET
 import urllib.parse
 import numpy as np
-import time
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.layers import Dense
 from tensorflow.keras import optimizers, losses, Model
 from .env import *
 from .hyperparam import *
-import torch
 
+# create environment and actions
 env = RobotEnv()
 
 class ActorModel(Model):
@@ -43,8 +34,8 @@ class ActorModel(Model):
 class CriticModel(Model):
     def __init__(self):
         super(CriticModel, self).__init__()
-        self.layer_c1 = tf.Dense(128, activation='relu')
-        self.layer_c2 = tf.Dense(128, activation='relu')
+        self.layer_c1 = Dense(128, activation='relu')
+        self.layer_c2 = Dense(128, activation='relu')
         self.value = Dense(1)
 
     def call(self, state_action):
