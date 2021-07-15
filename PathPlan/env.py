@@ -353,7 +353,7 @@ def main():
     signal = [['/rw/iosystem/signals/di0;state', '/rw/iosystem/signals/di1;state'], ['2', '2']]
 
     subscriber = Subscription(host, username, password, signal[0], signal[1])
-    symbolData = SymbolData(host, username, password, namespace, 'Target_10', 'Target_20', 'Target_70', 'time', 0)
+    symbolData = SymbolData(host, username, password, namespace, 'Target_160', 'Target_40', 'Target_170', 'time', 0)
     signalData = Signal(host, username, password, namespace, signal)
     rapidExe = Execution(host, username, password, namespace)
 
@@ -383,7 +383,7 @@ def main():
         print(train_data[j])
 
     df = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
-    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train.csv', header=True)
+    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train_2.csv', header=True)
 
     print(df)
 
