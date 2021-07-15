@@ -151,12 +151,14 @@ class SymbolData:
             z1, z2 = self.valueA[0][2], self.valueB[0][2]
             x_valid = (x1 < randomPoint[0] < x2) or (x2 < randomPoint[0] <x1)
             y_valid = (y1 < randomPoint[1] < y2) or (y2 < randomPoint[1] <y1)
-            z_valid = (z1 < randomPoint[2] < z2) or (z2 < randomPoint[2] <z2)
-            invalid = not(x_valid and y_valid and z_valid)
+            # z_valid = (z1 < randomPoint[2] < z2) or (z2 < randomPoint[2] <z2) 
+            # invalid = not(x_valid and y_valid and z_valid)
+            # z_valid = (z1 < randomPoint[2] < z2) or (z2 < randomPoint[2] <z2) 
+            invalid = not(x_valid and y_valid)
 
         # When random values are valid, assign to changevalue
         for i in range(3):
-            self.changevalue[0][i] = randomPoint[i]
+            self.changevalue[0][i] = np.round(randomPoint[i], 2)
 
         self.episodes = self.episodes + 1
         self.urlencode()
@@ -353,11 +355,11 @@ def main():
     signal = [['/rw/iosystem/signals/di0;state', '/rw/iosystem/signals/di1;state'], ['2', '2']]
 
     subscriber = Subscription(host, username, password, signal[0], signal[1])
-    symbolData = SymbolData(host, username, password, namespace, 'Target_160', 'Target_40', 'Target_170', 'time', 0)
+    symbolData = SymbolData(host, username, password, namespace, 'Target_190', 'Target_210', 'Target_200', 'time', 0)
     signalData = Signal(host, username, password, namespace, signal)
     rapidExe = Execution(host, username, password, namespace)
 
-    for i in range(300):
+    for i in range(100):
         data = []
         print(f"\nEpisodes: {i}")
         if symbolData.getSymbolData():
@@ -383,7 +385,7 @@ def main():
         print(train_data[j])
 
     df = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
-    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train_2.csv', header=True)
+    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train_4.csv', header=True)
 
     print(df)
 
