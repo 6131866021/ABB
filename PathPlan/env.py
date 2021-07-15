@@ -12,61 +12,78 @@ tensorflow > 2.0.0
 numpy > ...
 """
 
+from operator import sub
 import requests
 from ws4py.client.threadedclient import WebSocketClient
 from requests.auth import HTTPDigestAuth
 import xml.etree.ElementTree as ET
 import urllib.parse
 import numpy as np
+import pandas as pd
 import time
 
-class RobotEnv:
-    def __init__(self):
-        self.info = np.zeros((2, 4))
+host = "http://192.168.1.113:80/"
+username = 'Default User'
+password = 'robotics'
+namespace = '{http://www.w3.org/1999/xhtml}'
+digest_auth = HTTPDigestAuth(username, password)
+execution = True
+train_data = []
 
-    def step(self, action):
-        """Perform training"""
-        self.action = action
-    
-    def reset(self):
-        """Reset values after changing the robtarget data"""
-        self.point = 0        
+class RobWebSocketClient(WebSocketClient):
+    def opened(self):
+        print("Web Socket connection established")
+        startExecution()
 
-class Login:
-    def __init__(self, host, username, password, namespace):
+    def closed(self, code, reason=None):
+        print("Closed down", code, reason)
+
+    def received_message(self, message):
+        if message.is_text:
+            stopExecution()
+            self.close()
+            # print_event(message, '{http://www.w3.org/1999/xhtml}', liclass="ios-signalstate-ev", spanclass="lvalue")
+        else:
+            print("Received Illegal Event")
+
+class Subscription:
+    def __init__(self, host, username, password, resources, priority):
         self.host = host
         self.username = username
         self.password = password
-        self.namespace = namespace
+        self.resources = resources
+        self.priority = priority
         self.digest_auth = HTTPDigestAuth(self.username, self.password)
+        self.subscription_url = self.host + "subscription"
         self.session = requests.Session()
 
-    def localLogin(self):
-        print("In FlexPendant, Toggle 'Enable Button' for 3 times")
-        url = self.host + "users?action=set-locale"
-        payload='type=local'
-        headers = {
-            'Content-Type': 'application/x-www-form-hostencoded',
-        }
-        response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
-        if response.status_code == 200:
+    def subscribe(self):
+        rs = len(self.resources)
+        resources = [str(i+1) for i in range(rs)]
+        payload = {'resources': resources}
+        for i in range(rs):
+            payload.update({resources[i]:self.resources[i], 
+                            resources[i]+'-p':self.priority[i]})
+  
+        response = self.session.post(self.subscription_url, auth=self.digest_auth, data=payload)
+        if response.status_code == 201:
+            self.location = response.headers['Location']
+            self.cookie = '-http-session-={0}; ABBCX={1}'.format(response.cookies['-http-session-'], response.cookies['ABBCX'])
             return True
         else:
-            print("Try to toggle 'Enable Button' again") 
+            print('Error subscribing ' + str(response.status_code))
             return False
-    
-    def requestMastership(self):
-        url = self.host + "rw/mastership?action=request"
-        payload='type=local'
-        headers = {
-        'Content-Type': 'application/x-www-form-hostencoded',
-        }
-        response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
-        if response.status_code == 204:
-            return True
-        else:
-            print("Fail to request mastership") 
-            return False
+        
+    def start_recv_events(self):
+        self.header = [('Cookie', self.cookie)]
+        self.ws = RobWebSocketClient(self.location, 
+                                    protocols=['robapi2_subscription'], 
+                                    headers=self.header)
+        self.ws.connect()
+        self.ws.run_forever()
+
+    def close(self):
+        self.ws.close()
 
 class SymbolData:
     def __init__(self, host, username, password, namespace, robtargetA, robtargetB, robtargetC, clk, episodes):
@@ -180,78 +197,31 @@ class Signal:
         self.session = requests.Session()
     
     def getSignal(self):
-        url = self.host + "rw/iosystem/signals/" + self.signal
-        payload={}
-        headers = {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Cookie': '-http-session-=27::http.session::cd42c3a9ac8c8b0e0a2202a1cfc94a23; ABBCX=40'
-        }
-        response = self.session.request("GET", url, headers=headers, data=payload, auth=self.digest_auth)
-        self.signalvalue = 0
-        print(response.text)
-        # print_event(response.text, self.namespace, liclass="ios-signal", spanclass="lvalue")
-        return response.status_code == 200
+        print()
+        # url = self.host + "rw/iosystem/signals/" + self.signal
+        # payload={}
+        # headers = {
+        #     'Content-Type': 'application/x-www-form-urlencoded',
+        #     'Cookie': '-http-session-=27::http.session::cd42c3a9ac8c8b0e0a2202a1cfc94a23; ABBCX=40'
+        # }
+        # response = self.session.request("GET", url, headers=headers, data=payload, auth=self.digest_auth)
+        # self.signalvalue = 0
+        # print(response.text)
+        # # print_event(response.text, self.namespace, liclass="ios-signal", spanclass="lvalue")
+        # return response.status_code == 200
     
     def updateSignal(self):
-        url = self.host + "rw/iosystem/signals/" + self.signal + "?action=set"
-        payload = 'lvalue=1' if self.signalvalue == 0 else 'lvalue=0'
-        headers = {
-        'Content-Type': 'application/x-www-form-urlencoded'
-        }
-        response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
-        return response.status_code == 204
-
-class RobWebSocketClient(WebSocketClient):
-    def opened(self):
-        print("Web Socket connection established")
-
-    def closed(self, code, reason=None):
-        print("Closed down", code, reason)
-
-class Subscription:
-    def __init__(self, host, username, password):
-        self.host = host
-        self.username = username
-        self.password = password
-        self.digest_auth = HTTPDigestAuth(self.username, self.password)
-        self.subscription_url = self.host + "subscription"
-        self.session =requests.Session()
-
-    def subscribe(self):
-        payload = {'resources':'1',
-                    '1':'/rw/rapid/symbol/data/RAPID/T_ROB1/Module1/execution',
-                    '1-p':'1'}
-        # payload = {'resources':['1','2','3'],
-        #      '1':'/rw/panel/speedratio',
-        #      '1-p':'1',
-        #      '2':'/rw/panel/ctrlstate',
-        #      '2-p':'1',
-        #      '3':'/rw/panel/opmode',
-        #      '3-p':'1'}        
-
-        response = self.session.post(self.subscription_url, auth=self.digest_auth, data=payload)
-        print(response.text)
-        if response.status_code == 201:
-            self.location = response.headers['Location']
-            self.cookie = "-http-session-={0}; ABBCX={1}".format(response.cookies['-http-session'], response.cookies['ABBCX'])
-            return True
-        else:
-            print("Error subscribing "  + str(response.status_code))
-            return False
-        
-    def start_recv_events(self):
-        self.header = [('Cookie', self.cookie)]
-        self.ws = RobWebSocketClient(self.location, 
-                                    protocols=['robapi2_subscription'], 
-                                    headers=self.header)
-        self.ws.connect()
-        self.ws.run_forever()
-
-    def close(self):
-        self.ws.close()
+        print('updateSignal')
+        # url = self.host + "rw/iosystem/signals/" + self.signal + "?action=set"
+        # payload = 'lvalue=1' if self.signalvalue == 0 else 'lvalue=0'
+        # headers = {
+        # 'Content-Type': 'application/x-www-form-urlencoded'
+        # }
+        # response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
+        # return response.status_code == 204
 
 class Execution:
-    def __init__(self, host, username, password, namespace, once):
+    def __init__(self, host, username, password, namespace, once=False):
         self.host = host
         self.username = username
         self.password = password
@@ -343,6 +313,34 @@ def extract_value(evt):
                     [arr[7], arr[8], arr[9], arr[10]], 
                     [arr[11], arr[12], arr[13], arr[14], arr[15], arr[16]]], dtype=object)
 
+def startExecution():
+    url = host + "rw/rapid/execution?action=startprodentry"
+    payload='regain=continue&execmode=continue&cycle=once&condition=none&stopatbp=disabled&alltaskbytsp=false'
+    headers = {
+        'Content-Type': 'application/x-www-form-hostencoded',
+    }
+    response = requests.request("POST", url, headers=headers, data=payload, auth=digest_auth)
+    if response.status_code == 204:
+        print("Start Rapid Execution")
+        return True
+    else:
+        print("Fail to start execution")
+        return False
+    
+def stopExecution():
+    url = host + "rw/rapid/execution?action=stop"
+    payload='regain=continue&execmode=continue&cycle=forever&condition=none&stopatbp=disabled&alltaskbytsp=false'
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+    }
+    response = requests.request("POST", url, headers=headers, data=payload, auth=digest_auth)
+    if response.status_code == 204:
+        print("Stop Rapid Execution")
+        return True
+    else:
+        print("Fail to stop execution")
+        return False
+
 def main():
     """Main function to execute class and methods
     > Move to main.py
@@ -352,39 +350,161 @@ def main():
     username = 'Default User'
     password = 'robotics'
     namespace = '{http://www.w3.org/1999/xhtml}'
+    signal = [['/rw/iosystem/signals/di0;state', '/rw/iosystem/signals/di1;state'], ['2', '2']]
 
+    subscriber = Subscription(host, username, password, signal[0], signal[1])
     symbolData = SymbolData(host, username, password, namespace, 'Target_10', 'Target_20', 'Target_70', 'time', 0)
-    rapidExe = Execution(host, username, password, namespace, once=False)
-    signalData = Signal(host, username, password, namespace, 'di0')
-    subscribe = Subscription(host, username, password)
-    data = []
-    if subscribe.subscribe():
-        subscribe.start_recv_events()
+    signalData = Signal(host, username, password, namespace, signal)
+    rapidExe = Execution(host, username, password, namespace)
 
-    if symbolData.getSymbolData():
-        while symbolData.episodes < 5:
-            print(f"\nEpisodes: {symbolData.episodes}")
+    for i in range(300):
+        data = []
+        print(f"\nEpisodes: {i}")
+        if symbolData.getSymbolData():
             symbolData.changeData()
             if symbolData.validateSymbolData():
+                time.sleep(1)
                 symbolData.updateSymbolData()
-                try:
-                    if rapidExe.startExecution():
-                        time.sleep(4)
-                        symbolData.getSymbolData(datatype="clock")
-                        # signalData.getSignal()
-                        c = []
-                        for i in range(len(symbolData.changevalue[0])):
-                            c.append(symbolData.changevalue[0][i])
-                        t = symbolData.time
-                        # if signalData.signalvalue != 1:
-                        #     data.append([t, c])
-                        data.append([t, c])
-                        rapidExe.stopExecution()
-                except KeyboardInterrupt:
+                if rapidExe.startExecution():
+                    time.sleep(10)
                     rapidExe.stopExecution()
-    data.sort()
-    for i in range(5):
-        print(data[i])
+                    symbolData.getSymbolData(datatype="clock")
+                    for i in range(len(symbolData.valueA[0])):
+                        data.append(symbolData.valueA[0][i])
+                    for i in range(len(symbolData.valueB[0])):
+                        data.append(symbolData.valueB[0][i])
+                    for i in range(len(symbolData.changevalue[0])):
+                        data.append(symbolData.changevalue[0][i])
+                    data.append(float(symbolData.time[0]))
+        train_data.append(data)
+
+    print("\n")
+    for j in range(len(train_data)):
+        print(train_data[j])
+
+    df = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
+    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train.csv', header=True)
+
+    print(df)
+
+    # try:
+    #     if subscriber.subscribe():
+    #         subscriber.start_recv_events()
+    #         if symbolData.getSymbolData():
+    #             while symbolData.episodes < 5:
+    #                 print(f"\nEpisodes: {symbolData.episodes}")
+    #                 symbolData.changeData()
+    #             if symbolData.validateSymbolData():
+    #                 symbolData.updateSymbolData()
+    #                 startExecution()
+    #                 symbolData.getSymbolData(datatype="clock")
+    #                 c = []
+    #                 for i in range(len(symbolData.changevalue[0])):
+    #                     c.append(symbolData.changevalue[0][i])
+    #                     t = symbolData.time
+    #                     # if signalData.signalvalue != 1:
+    #                     #     data.append([t, c])
+    #                     data.append([t, c])
+    #         data.sort()
+    #         print(data)
+    # except KeyboardInterrupt:
+    #     subscriber.close()
+
+    # if symbolData.getSymbolData():
+    #     while symbolData.episodes < 5:
+    #         print(f"\nEpisodes: {symbolData.episodes}")
+    #         symbolData.changeData()
+    #         if symbolData.validateSymbolData():
+    #             symbolData.updateSymbolData()
+    #             try:
+    #                 if subscriber.subscribe():
+    #                     subscriber.start_recv_events()
+    #             except KeyboardInterrupt:
+    #                 subscriber.close()
+    #             symbolData.getSymbolData(datatype="clock")
+    #             # signalData.getSignal()
+    #             c = []
+    #             for i in range(len(symbolData.changevalue[0])):
+    #                 c.append(symbolData.changevalue[0][i])
+    #                 t = symbolData.time
+    #                         # if signalData.signalvalue != 1:
+    #                         #     data.append([t, c])
+    #                 data.append([t, c])
+
+    # data.sort()
+    # for i in range(5):
+    #     print(data[i])
 
 if __name__ == "__main__":
      main()
+
+
+
+
+
+# class Login:
+#     def __init__(self, host, username, password, namespace):
+#         self.host = host
+#         self.username = username
+#         self.password = password
+#         self.namespace = namespace
+#         self.digest_auth = HTTPDigestAuth(self.username, self.password)
+#         self.session = requests.Session()
+
+#     def localLogin(self):
+#         print("In FlexPendant, Toggle 'Enable Button' for 3 times")
+#         url = self.host + "users?action=set-locale"
+#         payload='type=local'
+#         headers = {
+#             'Content-Type': 'application/x-www-form-hostencoded',
+#         }
+#         response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
+#         if response.status_code == 200:
+#             return True
+#         else:
+#             print("Try to toggle 'Enable Button' again") 
+#             return False
+    
+#     def requestMastership(self):
+#         url = self.host + "rw/mastership?action=request"
+#         payload='type=local'
+#         headers = {
+#         'Content-Type': 'application/x-www-form-hostencoded',
+#         }
+#         response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
+#         if response.status_code == 204:
+#             return True
+#         else:
+#             print("Fail to request mastership") 
+#             return False
+# class Signal:
+#     def __init__(self, host, username, password, namespace, signal):
+#         self.host = host
+#         self.username = username
+#         self.password = password
+#         self.namespace = namespace
+#         self.digest_auth = HTTPDigestAuth(self.username, self.password)
+#         self.signal = signal
+#         self.session = requests.Session()
+    
+#     def getSignal(self):
+#         url = self.host + "rw/iosystem/signals/" + self.signal
+#         payload={}
+#         headers = {
+#             'Content-Type': 'application/x-www-form-urlencoded',
+#             'Cookie': '-http-session-=27::http.session::cd42c3a9ac8c8b0e0a2202a1cfc94a23; ABBCX=40'
+#         }
+#         response = self.session.request("GET", url, headers=headers, data=payload, auth=self.digest_auth)
+#         self.signalvalue = 0
+#         print(response.text)
+#         # print_event(response.text, self.namespace, liclass="ios-signal", spanclass="lvalue")
+#         return response.status_code == 200
+    
+#     def updateSignal(self):
+#         url = self.host + "rw/iosystem/signals/" + self.signal + "?action=set"
+#         payload = 'lvalue=1' if self.signalvalue == 0 else 'lvalue=0'
+#         headers = {
+#         'Content-Type': 'application/x-www-form-urlencoded'
+#         }
+#         response = self.session.request("POST", url, headers=headers, data=payload, auth=self.digest_auth)
+#         return response.status_code == 204
