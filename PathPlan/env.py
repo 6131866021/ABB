@@ -354,38 +354,67 @@ def main():
     namespace = '{http://www.w3.org/1999/xhtml}'
     signal = [['/rw/iosystem/signals/di0;state', '/rw/iosystem/signals/di1;state'], ['2', '2']]
 
+    t = [['Target_340', 'Target_350', 'Target_360'], ['Target_370', 'Target_380', 'Target_390']]
     subscriber = Subscription(host, username, password, signal[0], signal[1])
-    symbolData = SymbolData(host, username, password, namespace, 'Target_190', 'Target_210', 'Target_200', 'time', 0)
-    signalData = Signal(host, username, password, namespace, signal)
+    # symbolData = SymbolData(host, username, password, namespace, 'Target_30', 'Target_310', 'Target_330', 'time', 0)
+    # signalData = Signal(host, username, password, namespace, signal)
     rapidExe = Execution(host, username, password, namespace)
 
-    for i in range(100):
-        data = []
-        print(f"\nEpisodes: {i}")
-        if symbolData.getSymbolData():
-            symbolData.changeData()
-            if symbolData.validateSymbolData():
-                time.sleep(1)
-                symbolData.updateSymbolData()
-                if rapidExe.startExecution():
-                    time.sleep(10)
-                    rapidExe.stopExecution()
-                    symbolData.getSymbolData(datatype="clock")
-                    for i in range(len(symbolData.valueA[0])):
-                        data.append(symbolData.valueA[0][i])
-                    for i in range(len(symbolData.valueB[0])):
-                        data.append(symbolData.valueB[0][i])
-                    for i in range(len(symbolData.changevalue[0])):
-                        data.append(symbolData.changevalue[0][i])
-                    data.append(float(symbolData.time[0]))
-        train_data.append(data)
+    for j in range(2):
+        symbolData = SymbolData(host, username, password, namespace, t[j][0], t[j][1], t[j][2], 'time', 0)
+        for i in range(100):
+            data = []
+            print(f"\nEpisodes: {i}")
+            if symbolData.getSymbolData():
+                symbolData.changeData()
+                if symbolData.validateSymbolData():
+                    time.sleep(1)
+                    symbolData.updateSymbolData()
+                    if rapidExe.startExecution():
+                        time.sleep(10)
+                        rapidExe.stopExecution()
+                        symbolData.getSymbolData(datatype="clock")
+                        for i in range(len(symbolData.valueA[0])):
+                            data.append(symbolData.valueA[0][i])
+                        for i in range(len(symbolData.valueB[0])):
+                            data.append(symbolData.valueB[0][i])
+                        for i in range(len(symbolData.changevalue[0])):
+                            data.append(symbolData.changevalue[0][i])
+                        data.append(float(symbolData.time[0]))
+            train_data.append(data)
 
     print("\n")
     for j in range(len(train_data)):
         print(train_data[j])
 
+
+    # for i in range(100):
+    #     data = []
+    #     print(f"\nEpisodes: {i}")
+    #     if symbolData.getSymbolData():
+    #         symbolData.changeData()
+    #         if symbolData.validateSymbolData():
+    #             time.sleep(1)
+    #             symbolData.updateSymbolData()
+    #             if rapidExe.startExecution():
+    #                 time.sleep(10)
+    #                 rapidExe.stopExecution()
+    #                 symbolData.getSymbolData(datatype="clock")
+    #                 for i in range(len(symbolData.valueA[0])):
+    #                     data.append(symbolData.valueA[0][i])
+    #                 for i in range(len(symbolData.valueB[0])):
+    #                     data.append(symbolData.valueB[0][i])
+    #                 for i in range(len(symbolData.changevalue[0])):
+    #                     data.append(symbolData.changevalue[0][i])
+    #                 data.append(float(symbolData.time[0]))
+    #     train_data.append(data)
+
+    # print("\n")
+    # for j in range(len(train_data)):
+    #     print(train_data[j])
+
     df = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
-    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train_4.csv', header=True)
+    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train_9.csv', header=True)
 
     print(df)
 
