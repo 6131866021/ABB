@@ -13,7 +13,9 @@ numpy > ...
 """
 
 from operator import sub
+from typing import Text
 import requests
+from requests.api import request
 from ws4py.client.threadedclient import WebSocketClient
 from requests.auth import HTTPDigestAuth
 import xml.etree.ElementTree as ET
@@ -27,22 +29,31 @@ username = 'Default User'
 password = 'robotics'
 namespace = '{http://www.w3.org/1999/xhtml}'
 digest_auth = HTTPDigestAuth(username, password)
-execution = True
+status = True
+ex = []
 train_data = []
+symbol_data = []
 
 class RobWebSocketClient(WebSocketClient):
     def opened(self):
         print("Web Socket connection established")
-        startExecution()
+        # startExecution()
 
     def closed(self, code, reason=None):
         print("Closed down", code, reason)
 
     def received_message(self, message):
         if message.is_text:
-            stopExecution()
-            self.close()
-            # print_event(message, '{http://www.w3.org/1999/xhtml}', liclass="ios-signalstate-ev", spanclass="lvalue")
+            print(message)
+            # status = print_event(message, '{http://www.w3.org/1999/xhtml}', liclass="ios-signalstate-ev", spanclass="lvalue")
+            # print(status)
+
+            # ex.append(print_event(message, '{http://www.w3.org/1999/xhtml}', liclass="ios-signalstate-ev", spanclass="lvalue"))
+            # print(ex)
+
+            # stopExecution()
+            # If you want it's close
+            # self.close()
         else:
             print("Received Illegal Event")
 
@@ -66,6 +77,7 @@ class Subscription:
                             resources[i]+'-p':self.priority[i]})
   
         response = self.session.post(self.subscription_url, auth=self.digest_auth, data=payload)
+        print(response)
         if response.status_code == 201:
             self.location = response.headers['Location']
             self.cookie = '-http-session-={0}; ABBCX={1}'.format(response.cookies['-http-session-'], response.cookies['ABBCX'])
@@ -116,7 +128,7 @@ class SymbolData:
             url = [host + str(rb) for rb in robtarget]
             payload={}
             headers = {
-                'Content-Type': 'application/x-www-form-hostencoded',
+                'Content-Type': 'application/x-www-form-urlencoded',
             }
             response = [self.session.request("GET", url[0], headers=headers, data=payload, auth=self.digest_auth),
                         self.session.request("GET", url[1], headers=headers, data=payload, auth=self.digest_auth),
@@ -124,7 +136,7 @@ class SymbolData:
             self.valueA = extract_value(print_event(response[0].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[0].status_code == 200 else False
             self.valueB = extract_value(print_event(response[1].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[1].status_code == 200 else False
             self.valueC = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
-            self.changevalue = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
+            self.changevalue = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(','))
             return response[0].status_code == 200 and response[1].status_code == 200 and response[2].status_code == 200
 
     def urlencode(self):
@@ -141,9 +153,9 @@ class SymbolData:
 
     def changeData(self):
         invalid, randomPoint = True, []
-        mean, std = [(self.valueA[0][i]+self.valueB[0][i])/2 for i in range(3)], [abs(self.valueA[0][i]-self.valueB[0][i])/4 for i in range(3)]
-        sm = abs(self.valueA[0][2]-self.valueB[0][2])/4
-        mean[2] = self.valueA[0][2] + sm if self.valueA[0][2] > self.valueB[0][2] else self.valueB[0][2] + sm
+        mean, std = [(self.valueA[0][i]+self.valueB[0][i])/2 for i in range(3)], [abs(self.valueA[0][i]-self.valueB[0][i])/8 for i in range(3)]
+        # sm = abs(self.valueA[0][2]-self.valueB[0][2])/4
+        # mean[2] = self.valueA[0][2] - sm if self.valueA[0][2] > self.valueB[0][2] else self.valueB[0][2] - sm
         while invalid:
             randomPoint = [np.random.normal(loc=mean[i], scale=std[i]) for i in range(3)]
             x1, x2 = self.valueA[0][0], self.valueB[0][0]
@@ -162,6 +174,8 @@ class SymbolData:
 
         self.episodes = self.episodes + 1
         self.urlencode()
+
+        return True
 
     def validateSymbolData(self):
         url = self.host + "rw/rapid/symbol/data?action=validate"
@@ -186,6 +200,29 @@ class SymbolData:
             return True
         else:
             print("Error update symbol data") 
+            return False
+
+    def changeTrainData(self, valueA, valueB):
+        for i in range(3):
+            self.valueA[0][i] = valueA[i]
+            self.valueB[0][i] = valueB[i]
+        constant = "],[0,0.707106781,0.707106781,0],[0,0,0,0],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]]"
+        self.encodevalues = [urllib.parse.quote_plus("[[" + str(valueA[0]) + "," + str(valueA[1]) + "," + str(valueA[2]) + constant),
+                             urllib.parse.quote_plus("[[" + str(valueB[0]) + "," + str(valueB[1]) + "," + str(valueB[2]) + constant)]
+
+    def updateTrainSymbolData(self):
+        url = [self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/" + self.robtargetA + "?action=setInitValue",
+               self.host + "rw/rapid/symbol/data/RAPID/T_ROB1/Module1/" + self.robtargetB + "?action=setInitValue"]
+        payload = ['value=' + encode for encode in self.encodevalues]
+        headers = {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        response = [requests.request("POST", url[1], headers=headers, data=payload[1], auth=digest_auth),
+                    requests.request("POST", url[0], headers=headers, data=payload[0], auth=digest_auth)]
+        if response[0].status_code == 204 and response[1].status_code == 204:
+            return True
+        else:
+            print("Error update train symbol data") 
             return False
 
 class Signal:
@@ -343,6 +380,18 @@ def stopExecution():
         print("Fail to stop execution")
         return False
 
+def onMotor():
+    url = host + "rw/cfg?action=keyless"
+    payload='state=run'
+    headers = {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Cookie': '-http-session-=1464::http.session::15584ea33081b13e9f41c740ab8f9366; ABBCX=123'
+    }
+    response = requests.request("POST", url, headers=headers, data=payload, auth=digest_auth)
+    if response.status_code == 204:
+        print("Set Motor On")
+
+
 def main():
     """Main function to execute class and methods
     > Move to main.py
@@ -352,40 +401,186 @@ def main():
     username = 'Default User'
     password = 'robotics'
     namespace = '{http://www.w3.org/1999/xhtml}'
-    signal = [['/rw/iosystem/signals/di0;state', '/rw/iosystem/signals/di1;state'], ['2', '2']]
+    signal = [['/rw/iosystem/signals/doCheck;state', '/rw/iosystem/signals/doDrop;state'], ['2', '2']]
 
+    # robtarget
     t = [['Target_340', 'Target_350', 'Target_360'], ['Target_370', 'Target_380', 'Target_390']]
+    
     subscriber = Subscription(host, username, password, signal[0], signal[1])
-    # symbolData = SymbolData(host, username, password, namespace, 'Target_30', 'Target_310', 'Target_330', 'time', 0)
-    # signalData = Signal(host, username, password, namespace, signal)
+    symbolData = SymbolData(host, username, password, namespace, 'pointA', 'pointB', 'pointC', 'time', 0)
+    signalData = Signal(host, username, password, namespace, signal)
     rapidExe = Execution(host, username, password, namespace)
 
-    for j in range(2):
-        symbolData = SymbolData(host, username, password, namespace, t[j][0], t[j][1], t[j][2], 'time', 0)
-        for i in range(100):
-            data = []
-            print(f"\nEpisodes: {i}")
-            if symbolData.getSymbolData():
-                symbolData.changeData()
-                if symbolData.validateSymbolData():
-                    time.sleep(1)
-                    symbolData.updateSymbolData()
-                    if rapidExe.startExecution():
-                        time.sleep(10)
-                        rapidExe.stopExecution()
-                        symbolData.getSymbolData(datatype="clock")
-                        for i in range(len(symbolData.valueA[0])):
-                            data.append(symbolData.valueA[0][i])
-                        for i in range(len(symbolData.valueB[0])):
-                            data.append(symbolData.valueB[0][i])
-                        for i in range(len(symbolData.changevalue[0])):
-                            data.append(symbolData.changevalue[0][i])
-                        data.append(float(symbolData.time[0]))
-            train_data.append(data)
 
-    print("\n")
-    for j in range(len(train_data)):
-        print(train_data[j])
+    # <---------------------- Training point A and B in real situation --------------------------->
+
+
+    # df = pd.read_csv('rws_train_palletizing.csv')
+
+    # for d in range(10):
+    #     symbolData = SymbolData(host, username, password, namespace, 'pPickTemp', 'pPlaceTemp', 'pMidP', 'time', 0)
+    #     row = df.iloc[d]
+    #     valueA = [row['A_X'], row['A_Y'], row['A_Z']]
+    #     valueB = [row['B_X'], row['B_Y'], row['B_Z']]
+    #     if symbolData.getSymbolData():
+    #         data = []
+    #         print(f"\nPair {d}")
+    #         symbolData.changeData()
+    #         if symbolData.validateSymbolData():
+    #             if symbolData.updateSymbolData():
+    #                 symbolData.getSymbolData(datatype="clock")
+    #                 for i in range(len(valueA)):
+    #                     data.append(valueA[i])
+    #                 for i in range(len(valueB)):
+    #                     data.append(valueB[i])
+    #                 for i in range(len(symbolData.changevalue[0])):
+    #                     data.append(symbolData.changevalue[0][i])
+    #                 data.append(float(symbolData.time[0]))
+    #         time.sleep(3.0)
+    #         train_data.append(data)
+
+    # df2 = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
+    # df2.to_csv(r'C:\Users\_\Desktop\ABB\PathPlan\rws_train_9.csv', header=True)
+    # print(df2)
+
+
+    # <--------------------------- Trying Subscription -------------------------------->
+
+
+    # try:
+    #     if subscriber.subscribe():
+    #         subscriber.start_recv_events()
+    #         if symbolData.getSymbolData():
+    #             print('')
+    #             while symbolData.episodes < 5:
+    #                 print(f"\nEpisodes: {symbolData.episodes}")
+    #                 symbolData.changeData()
+    #             if symbolData.validateSymbolData():
+    #                 symbolData.updateSymbolData()
+    #                 startExecution()
+    #                 symbolData.getSymbolData(datatype="clock")
+    #                 c = []
+    #                 for i in range(len(symbolData.changevalue[0])):
+    #                     c.append(symbolData.changevalue[0][i])
+    #                     t = symbolData.time
+    #                     # if signalData.signalvalue != 1:
+    #                     #     data.append([t, c])
+    #                     data.append([t, c])
+    #         data.sort()
+    #         print(data)
+    # except KeyboardInterrupt:
+    #     subscriber.close()
+
+
+    # <--------------------------- Massive training -------------------------------->
+
+
+    df = pd.read_csv('rws_train_palletizing.csv')
+    for d in range(59):
+        symbolData = SymbolData(host, username, password, namespace, 'pointA', 'pointB', 'pointC', 'time', 0)
+        row = df.iloc[d]
+        valueA = [row['A_X'], row['A_Y'], row['A_Z']]
+        valueB = [row['B_X'], row['B_Y'], row['B_Z']]
+        print(valueA, valueB)
+        if symbolData.getSymbolData():
+            symbolData.changeTrainData(valueA, valueB)
+            if symbolData.updateTrainSymbolData():
+                for j in range(50):
+                    data = []
+                    print(f"Pair {d}, Episodes: {j}")
+                    if symbolData.changeData():
+                        if symbolData.validateSymbolData():
+                            symbolData.updateSymbolData()
+                            if rapidExe.startExecution():
+                                time.sleep(8)
+                                rapidExe.stopExecution()
+                                symbolData.getSymbolData(datatype="clock")
+                                for i in range(len(valueA)):
+                                    data.append(valueA[i])
+                                for i in range(len(valueB)):
+                                    data.append(valueB[i])
+                                for i in range(len(symbolData.changevalue[0])):
+                                    data.append(symbolData.changevalue[0][i])
+                                data.append(float(symbolData.time[0]))
+                            else:
+                                rapidExe.startExecution()
+                                onMotor()
+                                time.sleep(1)
+                                rapidExe.stopExecution()
+                    train_data.append(data)
+                    print("\n")
+
+    df2 = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
+    df2.to_csv(r'C:\Users\_\Desktop\ABB\PathPlan\rws_train_2.csv', header=True)
+    print(df2)
+
+
+    # <--------------- Palletizing Training ----------------------->
+
+
+    # for i in range(30):
+    #     data = []
+    #     print(f"Episodes: {i}")
+    #     # symbol_data.append(SymbolData(host, username, password, namespace, 'pPickTemp', 'pPlaceTemp', 'pMidP', 'time', 0))
+    #     symbolData = SymbolData(host, username, password, namespace, 'pPickTemp', 'pPlaceTemp', 'pMidP', 'time', 0)
+    #     if symbolData.getSymbolData():
+    #         symbolData.getSymbolData(datatype="clock")
+    #         for i in range(len(symbolData.valueA[0])):
+    #             data.append(symbolData.valueA[0][i])
+    #         for i in range(len(symbolData.valueB[0])):
+    #             data.append(symbolData.valueB[0][i])
+    #         for i in range(len(symbolData.changevalue[0])):
+    #             data.append(symbolData.changevalue[0][i])
+    #         data.append(float(symbolData.time[0]))
+    #         train_data.append(data)
+    #         time.sleep(4.0)
+
+    # for j in range(len(train_data)):
+    #     print(train_data[j])
+
+    # df = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
+    # df.to_csv(r'C:\Users\_\Desktop\ABB\PathPlan\rws_train3_palletizing.csv', header=True)
+
+    #  print(df)
+
+
+    # <--------------------------- Trial Training -------------------------------->
+
+
+    # for j in range(1):
+    #     symbolData = SymbolData(host, username, password, namespace, 'pPickTemp', 'pPlaceTemp', 'pMid', 'time', 0)
+    #     for i in range(100):
+    #         data = []
+    #         print(f"\nEpisodes: {i}")
+    #         if symbolData.getSymbolData():
+    #             symbolData.changeData()
+    #             if symbolData.validateSymbolData():
+    #                 time.sleep(1)
+    #                 symbolData.updateSymbolData()
+    #                 if rapidExe.startExecution():
+    #                     time.sleep(10)
+    #                     rapidExe.stopExecution()
+    #                     symbolData.getSymbolData(datatype="clock")
+    #                     for i in range(len(symbolData.valueA[0])):
+    #                         data.append(symbolData.valueA[0][i])
+    #                     for i in range(len(symbolData.valueB[0])):
+    #                         data.append(symbolData.valueB[0][i])
+    #                     for i in range(len(symbolData.changevalue[0])):
+    #                         data.append(symbolData.changevalue[0][i])
+    #                     data.append(float(symbolData.time[0]))
+    #         train_data.append(data)
+
+    # print("\n")
+    # for j in range(len(train_data)):
+    #     print(train_data[j])
+
+    # df = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
+    # df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train_9.csv', header=True)
+
+    # print(df)
+
+
+    # <--------------------------- Different training -------------------------------->
 
 
     # for i in range(100):
@@ -413,33 +608,9 @@ def main():
     # for j in range(len(train_data)):
     #     print(train_data[j])
 
-    df = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
-    df.to_csv(r'C:\Users\_\Desktop\ABB\rws_train_9.csv', header=True)
 
-    print(df)
+    # <--------------------------- Different training -------------------------------->
 
-    # try:
-    #     if subscriber.subscribe():
-    #         subscriber.start_recv_events()
-    #         if symbolData.getSymbolData():
-    #             while symbolData.episodes < 5:
-    #                 print(f"\nEpisodes: {symbolData.episodes}")
-    #                 symbolData.changeData()
-    #             if symbolData.validateSymbolData():
-    #                 symbolData.updateSymbolData()
-    #                 startExecution()
-    #                 symbolData.getSymbolData(datatype="clock")
-    #                 c = []
-    #                 for i in range(len(symbolData.changevalue[0])):
-    #                     c.append(symbolData.changevalue[0][i])
-    #                     t = symbolData.time
-    #                     # if signalData.signalvalue != 1:
-    #                     #     data.append([t, c])
-    #                     data.append([t, c])
-    #         data.sort()
-    #         print(data)
-    # except KeyboardInterrupt:
-    #     subscriber.close()
 
     # if symbolData.getSymbolData():
     #     while symbolData.episodes < 5:

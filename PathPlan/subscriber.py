@@ -83,7 +83,7 @@ class RWPanel:
          self.ws.run_forever()
  
      def close(self):
-         self.ws.close()  
+         self.ws.close()
  
  
 def enable_http_debug():
