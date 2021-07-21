@@ -12,8 +12,8 @@ tensorflow > 2.0.0
 numpy > ...
 """
 
-from operator import sub
-from typing import Text
+import io
+import itertools as IT
 import requests
 from requests.api import request
 from ws4py.client.threadedclient import WebSocketClient
@@ -130,12 +130,16 @@ class SymbolData:
             headers = {
                 'Content-Type': 'application/x-www-form-urlencoded',
             }
-            response = [self.session.request("GET", url[0], headers=headers, data=payload, auth=self.digest_auth),
+            time.sleep(1)
+            response = [self.session.request("GET", url[0], headers=headers, data=payload, auth=self.digest_auth, ),
                         self.session.request("GET", url[1], headers=headers, data=payload, auth=self.digest_auth),
                         self.session.request("GET", url[2], headers=headers, data=payload, auth=self.digest_auth)]
-            self.valueA = extract_value(print_event(response[0].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[0].status_code == 200 else False
-            self.valueB = extract_value(print_event(response[1].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[1].status_code == 200 else False
-            self.valueC = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(',')) if response[2].status_code == 200 else False
+
+            # print(response[0].text, response[1].text)
+
+            self.valueA = extract_value(print_event(response[0].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(','))
+            self.valueB = extract_value(print_event(response[1].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(','))
+            self.valueC = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(','))
             self.changevalue = extract_value(print_event(response[2].text, self.namespace, liclass="rap-data", spanclass="value")[0][1:-1].split(','))
             return response[0].status_code == 200 and response[1].status_code == 200 and response[2].status_code == 200
 
@@ -322,16 +326,29 @@ class Execution:
 def print_event(evt, namespace, liclass="", spanclass=""):
     """Extract the API response in the XML format
     with requirement of liclass or spanclass name"""
+    # root = ET.fromstring(evt)
+    # data = []
+    # span = spanclass
+    # spanclass = "[@class='" + spanclass + "']" if len(spanclass) > 0 else ''
+    # findRoot = ".//{0}li[@class='" + liclass + "']/{0}span" + spanclass
+    # for i in range(len(root.findall(findRoot.format(namespace)))):
+    #     data.append(root.findall(findRoot.format(namespace))[i].text)
+    #     print(liclass + " " + span + ": " + root.findall(findRoot.format(namespace))[i].text)
+    # return data
 
-    root = ET.fromstring(evt)
-    data = []
-    span = spanclass
-    spanclass = "[@class='" + spanclass + "']" if len(spanclass) > 0 else ''
-    findRoot = ".//{0}li[@class='" + liclass + "']/{0}span" + spanclass
-    for i in range(len(root.findall(findRoot.format(namespace)))):
-        data.append(root.findall(findRoot.format(namespace))[i].text)
-        print(liclass + " " + span + ": " + root.findall(findRoot.format(namespace))[i].text)
-    return data
+    try:
+        root = ET.fromstring(evt)
+        data = []
+        span = spanclass
+        spanclass = "[@class='" + spanclass + "']" if len(spanclass) > 0 else ''
+        findRoot = ".//{0}li[@class='" + liclass + "']/{0}span" + spanclass
+        for i in range(len(root.findall(findRoot.format(namespace)))):
+            data.append(root.findall(findRoot.format(namespace))[i].text)
+            print(liclass + " " + span + ": " + root.findall(findRoot.format(namespace))[i].text)
+        return data
+    except ET.ParseError:
+        pass
+        return [] 
 
 def extract_value(evt):
     """Get the robtarget value for a function() 
@@ -412,6 +429,56 @@ def main():
     rapidExe = Execution(host, username, password, namespace)
 
 
+    # <---------------------- Massive partition training ------------------------->
+
+
+    df = pd.read_csv('rws_train_palletizing.csv')
+    for set in range(1,5):
+        dt = []
+        try:
+            for d in range(set*10, set*10+10):
+                symbolData = SymbolData(host, username, password, namespace, 'pointA', 'pointB', 'pointC', 'time', 0)
+                row = df.iloc[d]
+                valueA = [row['A_X'], row['A_Y'], row['A_Z']]
+                valueB = [row['B_X'], row['B_Y'], row['B_Z']]
+                print(valueA, valueB)
+                time.sleep(1)
+                if symbolData.getSymbolData():
+                    symbolData.changeTrainData(valueA, valueB)
+                    if symbolData.updateTrainSymbolData():
+                        time.sleep(1)
+                        for j in range(10):
+                            data = []
+                            print(f"Pair {d}, Episodes: {j}")
+                            symbolData.getSymbolData()
+                            if symbolData.changeData():
+                                if symbolData.validateSymbolData():
+                                    symbolData.updateSymbolData()
+                                    if rapidExe.startExecution():
+                                        time.sleep(8)
+                                        rapidExe.stopExecution()
+                                        symbolData.getSymbolData(datatype="clock")
+                                        for i in range(len(valueA)):
+                                            data.append(valueA[i])
+                                        for i in range(len(valueB)):
+                                            data.append(valueB[i])
+                                        for i in range(len(symbolData.changevalue[0])):
+                                            data.append(symbolData.changevalue[0][i])
+                                        data.append(float(symbolData.time[0]))
+                                    else:
+                                        rapidExe.startExecution()
+                                        onMotor()
+                                        time.sleep(1)
+                                        rapidExe.stopExecution()
+                            dt.append(data)
+                            print("\n")
+
+            df2 = pd.DataFrame(dt, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
+            df2.to_csv(r'C:\Users\_\Desktop\ABB\PathPlan\rws_train_' + str(set+4) + '.csv', header=True)
+        except SyntaxError or IndexError:
+            pass
+
+
     # <---------------------- Training point A and B in real situation --------------------------->
 
 
@@ -475,44 +542,47 @@ def main():
     # <--------------------------- Massive training -------------------------------->
 
 
-    df = pd.read_csv('rws_train_palletizing.csv')
-    for d in range(59):
-        symbolData = SymbolData(host, username, password, namespace, 'pointA', 'pointB', 'pointC', 'time', 0)
-        row = df.iloc[d]
-        valueA = [row['A_X'], row['A_Y'], row['A_Z']]
-        valueB = [row['B_X'], row['B_Y'], row['B_Z']]
-        print(valueA, valueB)
-        if symbolData.getSymbolData():
-            symbolData.changeTrainData(valueA, valueB)
-            if symbolData.updateTrainSymbolData():
-                for j in range(50):
-                    data = []
-                    print(f"Pair {d}, Episodes: {j}")
-                    if symbolData.changeData():
-                        if symbolData.validateSymbolData():
-                            symbolData.updateSymbolData()
-                            if rapidExe.startExecution():
-                                time.sleep(8)
-                                rapidExe.stopExecution()
-                                symbolData.getSymbolData(datatype="clock")
-                                for i in range(len(valueA)):
-                                    data.append(valueA[i])
-                                for i in range(len(valueB)):
-                                    data.append(valueB[i])
-                                for i in range(len(symbolData.changevalue[0])):
-                                    data.append(symbolData.changevalue[0][i])
-                                data.append(float(symbolData.time[0]))
-                            else:
-                                rapidExe.startExecution()
-                                onMotor()
-                                time.sleep(1)
-                                rapidExe.stopExecution()
-                    train_data.append(data)
-                    print("\n")
+    # df = pd.read_csv('rws_train_palletizing.csv')
+    # for d in range(59):
+    #     symbolData = SymbolData(host, username, password, namespace, 'pointA', 'pointB', 'pointC', 'time', 0)
+    #     row = df.iloc[d]
+    #     valueA = [row['A_X'], row['A_Y'], row['A_Z']]
+    #     valueB = [row['B_X'], row['B_Y'], row['B_Z']]
+    #     print(valueA, valueB)
+    #     time.sleep(1)
+    #     if symbolData.getSymbolData():
+    #         symbolData.changeTrainData(valueA, valueB)
+    #         if symbolData.updateTrainSymbolData():
+    #             time.sleep(1)
+    #             for j in range(5):
+    #                 data = []
+    #                 print(f"Pair {d}, Episodes: {j}")
+    #                 symbolData.getSymbolData()
+    #                 if symbolData.changeData():
+    #                     if symbolData.validateSymbolData():
+    #                         symbolData.updateSymbolData()
+    #                         if rapidExe.startExecution():
+    #                             time.sleep(8)
+    #                             rapidExe.stopExecution()
+    #                             symbolData.getSymbolData(datatype="clock")
+    #                             for i in range(len(valueA)):
+    #                                 data.append(valueA[i])
+    #                             for i in range(len(valueB)):
+    #                                 data.append(valueB[i])
+    #                             for i in range(len(symbolData.changevalue[0])):
+    #                                 data.append(symbolData.changevalue[0][i])
+    #                             data.append(float(symbolData.time[0]))
+    #                         else:
+    #                             rapidExe.startExecution()
+    #                             onMotor()
+    #                             time.sleep(1)
+    #                             rapidExe.stopExecution()
+    #                 train_data.append(data)
+    #                 print("\n")
 
-    df2 = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
-    df2.to_csv(r'C:\Users\_\Desktop\ABB\PathPlan\rws_train_2.csv', header=True)
-    print(df2)
+    # df2 = pd.DataFrame(train_data, columns=["A_X", "A_Y", "A_Z", "B_X", "B_Y", "B_Z", "C_X", "C_Y", "C_Z", "time"])
+    # df2.to_csv(r'C:\Users\_\Desktop\ABB\PathPlan\rws_train_2.csv', header=True)
+    # print(df2)
 
 
     # <--------------- Palletizing Training ----------------------->
