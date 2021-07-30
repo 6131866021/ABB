@@ -51,6 +51,10 @@ class Data:
         self.execute_round = list()
         self.execute_data = list()
 
+
+
+        # <-- For building new model -->
+
         # copy
         self.copy_file = self.csvfolder + 'rws_copy.csv'
         self.copy_data = list()

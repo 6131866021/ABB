@@ -4,7 +4,7 @@ from optimizepanel import *
 from executepanel import *
 
 # Main Function
-# Adjust params used in the program at param.py
+# To Adjust Params in the program, go to param.py
 
 def main():
     train_subscriber = TrainSubscriber(ws.host, ws.username, ws.password, ws.signals[0], ws.signals[1])
