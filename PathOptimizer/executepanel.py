@@ -3,11 +3,7 @@ from ws4py.client.threadedclient import WebSocketClient
 from requests.auth import HTTPDigestAuth
 import xml.etree.ElementTree as ET
 import pandas as pd
-
-from robtarget import *
-from model import *
-from timedata import *
-from data import Data
+from param import Data
 
 ws = Data()
 
@@ -66,6 +62,7 @@ class ExecuteSubscriber:
 class RobWebSocketClient(WebSocketClient):
     def opened(self):
         """This class encapsulates the Web Socket Callbacks functions"""
+        print("\n-- Execute the optimized model --")
         print("Web Socket connection established")
 
     def closed(self, code, reason=None):
@@ -76,8 +73,7 @@ class RobWebSocketClient(WebSocketClient):
         if event_xml.is_text:
             self.state = self.extract_value(event_xml.data.decode("utf-8"))
             if self.state == '1':
-                updateC_listdata(len(ws.execute_round) * ws.save_random)
-                ws.execute_round.append(1)
+                updateC_listdata(len(ws.execute_round))
             elif self.state == '0':
                 get_data()
         else:
@@ -101,7 +97,8 @@ class RobWebSocketClient(WebSocketClient):
             # This loop extracts the value from specific li-spanclass in the XML response 
             for i in range(len(root.findall(findRoot.format(namespace)))):
                 value.append(root.findall(findRoot.format(namespace))[i].text)
-                print(liclass + " " + spanclass + ": " + root.findall(findRoot.format(namespace))[i].text)
+                print("State: " + root.findall(findRoot.format(namespace))[i].text)
+                # print(liclass + " " + spanclass + ": " + root.findall(findRoot.format(namespace))[i].text)
             return value[0]
 
         except ET.ParseError:
@@ -109,16 +106,16 @@ class RobWebSocketClient(WebSocketClient):
 
 def updateC_listdata(execute_round):
     """Update values of the robtargetC List by predicted values"""
-    df = pd.read_csv(ws.predict_file)
+    df = pd.read_csv(ws.optimize_file)
     prediction = list()
     for i in range(ws.save_random):
-        row = df.iloc[execute_round + i]
+        row = df.iloc[execute_round]
         prediction.append([row['C_X'], row['C_Y'], row['C_Z']])
     if ws.robtargetlist.getSymbol_data():
         ws.robtargetlist.changeC_listdata(prediction)
-        print(f"Round {int(execute_round/ws.save_random)}")
+        print(f"\nExecute Round: {int(execute_round+1)}")
         if ws.robtargetlist.updateC_listdata():
-            print('\n')
+            ws.execute_round.append(1)
 
 def get_data():
     """

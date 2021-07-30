@@ -1,15 +1,9 @@
 from tensorflow import keras
-from tensorflow.keras import layers
 from tensorflow.keras.utils import plot_model
-from tensorboard.plugins.hparams import api as hp
-from tensorflow.keras.models import model_from_json
-
-# from sklearn.compose import make_column_transformer
-# from sklearn.preprocessing import MinMaxScaler, OneHotEncoder
 
 class Model:
     def __init__(self, modelfile):
-        """Path Optimizer Deep Learning Model for IRB660."""
+        """Call Path Optimizer Model for IRB660"""
         self.model = keras.models.load_model(modelfile)
 
     def summary(self):
@@ -29,6 +23,3 @@ class Model:
 
     def predict(self, X_test):
         return self.model.predict(X_test)
-
-
-# Evaluate Success with loss: 0.0216 - mse: 0.0216
