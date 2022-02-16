@@ -2,11 +2,14 @@
 
 The aim of this project is to optimize the time for the movement of IRB660 ABB's Robot.
 
+Visit: https://drive.google.com/file/d/1wznp-zzT3NnLeZEJfu7iCkBrh9y01jI-/view?usp=sharing
+
 ## Workflows
 Train --> Predict --> Test --> Optimize --> Execute
 
 ## Example Use Case
 Palletizing - Robot Studio
+Pic1_Palletizing.PNG
 
 ## Attributes (in Robot Studio)
 1. point A
